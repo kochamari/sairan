@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>採卵スケジュール シミュレーター (PPOS法)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', 'Noto Sans JP', sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 flex items-center justify-center min-h-screen p-4">
+    <div class="w-full max-w-2xl mx-auto p-6 md:p-8 bg-white rounded-2xl shadow-lg">
+
+        <!-- ヘッダー -->
+        <header class="text-center mb-8">
+            <h1 class="text-2xl md:text-3xl font-bold text-gray-700">採卵スケジュール シミュレーター</h1>
+            <p class="text-sm md:text-base text-gray-500 mt-2">PPOS法 / 生理開始日を入力してください</p>
+        </header>
+
+        <!-- 入力フォーム -->
+        <div class="flex flex-col sm:flex-row items-center gap-4 mb-8">
+            <div class="relative w-full sm:w-auto flex-grow">
+                 <input type="text" id="startDateInput" placeholder="生理開始日 (例: 0611)" maxlength="4" class="w-full px-4 py-3 bg-gray-100 border-2 border-transparent rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition-all" />
+                 <label for="startDateInput" class="absolute top-3 left-4 text-gray-400 pointer-events-none transition-all duration-300">生理開始日 (MMDD)</label>
+            </div>
+            <button id="generateButton" class="w-full sm:w-auto bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-3 px-8 rounded-lg shadow-md hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1">
+                カレンダー作成
+            </button>
+        </div>
+        
+        <div id="errorMessage" class="text-red-500 text-center mb-4 font-medium hidden"></div>
+
+        <!-- カレンダー表示エリア -->
+        <div id="calendar" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <!-- JavaScriptでカレンダーがここに生成されます -->
+        </div>
+
+    </div>
+
+    <script>
+        const startDateInput = document.getElementById('startDateInput');
+        const generateButton = document.getElementById('generateButton');
+        const calendarContainer = document.getElementById('calendar');
+        const errorMessage = document.getElementById('errorMessage');
+        const inputLabel = document.querySelector('label[for="startDateInput"]');
+
+        // 入力フィールドのフォーカスと入力に応じたラベルの挙動
+        startDateInput.addEventListener('focus', () => {
+            inputLabel.classList.add('text-xs', 'transform', '-translate-y-5', 'text-indigo-500');
+            inputLabel.classList.remove('top-3');
+        });
+
+        startDateInput.addEventListener('blur', () => {
+            if (startDateInput.value === '') {
+                inputLabel.classList.remove('text-xs', 'transform', '-translate-y-5', 'text-indigo-500');
+                inputLabel.classList.add('top-3');
+            }
+        });
+        
+        startDateInput.addEventListener('input', () => {
+            if(startDateInput.value !== '') {
+                 inputLabel.classList.add('text-xs', 'transform', '-translate-y-5', 'text-indigo-500');
+                 inputLabel.classList.remove('top-3');
+            }
+        });
+
+        // ボタンクリック時の処理
+        generateButton.addEventListener('click', generateCalendar);
+        
+        // Enterキーでも作成
+        startDateInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                generateCalendar();
+            }
+        });
+
+
+        function generateCalendar() {
+            const input = startDateInput.value;
+            // 入力値バリデーション
+            if (!/^\d{4}$/.test(input)) {
+                showError("日付をMMDD形式（例: 0611）で入力してください。");
+                return;
+            }
+            
+            const month = parseInt(input.substring(0, 2), 10);
+            const day = parseInt(input.substring(2, 4), 10);
+
+            if (month < 1 || month > 12 || day < 1 || day > 31) {
+                showError("有効な日付を入力してください。");
+                return;
+            }
+            
+            hideError();
+
+            const currentYear = new Date().getFullYear();
+            const startDate = new Date(currentYear, month - 1, day);
+            
+            if (startDate < new Date() && (new Date().getTime() - startDate.getTime()) > 24 * 60 * 60 * 1000) {
+                 startDate.setFullYear(currentYear + 1);
+            }
+
+            // スケジュールイベントを定義
+            const events = [
+                { days: 2, label: "🏥 Day3 来院 ゴナールエフ注射開始 / デュファストン内服開始" },
+                { days: 8, label: "🏥 Day9 来院 卵胞チェック" },
+                { days: 9, label: "🏠 Day10 自宅 ゴナールエフ注射終了" },
+                { days: 10, label: "🏥 Day11 来院 採卵日決定 / オビドレル注射" },
+                { days: 11, label: "🏠 Day12 自宅 坐薬" },
+                { days: 12, label: "🏥 Day13 採卵日" },
+                { days: 15, label: "🏠 Day16 自宅 デュファストン内服終了" }
+            ];
+
+            const scheduleMap = new Map();
+            // 生理開始日をマップに追加
+            scheduleMap.set(formatDate(startDate), { label: "生理開始日", isStart: true });
+            
+            // 各イベントの日付を計算してマップに追加
+            events.forEach(event => {
+                const eventDate = new Date(startDate);
+                eventDate.setDate(startDate.getDate() + event.days);
+                const dateString = formatDate(eventDate);
+                if (scheduleMap.has(dateString)) {
+                    const existingEvent = scheduleMap.get(dateString);
+                    existingEvent.label += ` / ${event.label}`;
+                } else {
+                    scheduleMap.set(dateString, { label: event.label, isStart: false });
+                }
+            });
+
+            // カレンダーをクリア
+            calendarContainer.innerHTML = '';
+            
+            // 16日分のカレンダーを生成
+            for (let i = 0; i < 16; i++) {
+                const currentDate = new Date(startDate);
+                currentDate.setDate(startDate.getDate() + i);
+
+                const eventInfo = scheduleMap.get(formatDate(currentDate));
+                
+                // 投薬期間のチェック
+                const isGonalPeriod = i >= 2 && i <= 9;
+                const isDuphastonPeriod = i >= 2 && i <= 15;
+
+                const dayCard = createDayCard(currentDate, eventInfo, isGonalPeriod, isDuphastonPeriod);
+                calendarContainer.appendChild(dayCard);
+            }
+        }
+        
+        /**
+         * 日付カードのDOM要素を生成する
+         */
+        function createDayCard(date, eventInfo, isGonal, isDuphaston) {
+            const card = document.createElement('div');
+            const weekDays = ['日', '月', '火', '水', '木', '金', '土'];
+            const dayOfWeek = weekDays[date.getDay()];
+            
+            let bgColor = 'bg-white';
+            let textColor = 'text-gray-700';
+            let borderColor = 'border-gray-200';
+            let eventTextColor = 'text-indigo-600';
+
+            if (eventInfo) {
+                if (eventInfo.isStart) {
+                    bgColor = 'bg-pink-50';
+                    borderColor = 'border-pink-300';
+                    eventTextColor = 'text-pink-600';
+                } else {
+                    bgColor = 'bg-indigo-50';
+                    borderColor = 'border-indigo-300';
+                }
+            }
+
+            if (dayOfWeek === '土') {
+                textColor = 'text-blue-600';
+            } else if (dayOfWeek === '日') {
+                textColor = 'text-red-600';
+            }
+
+            card.className = `p-4 rounded-lg border-l-4 transition-all duration-300 ${bgColor} ${borderColor}`;
+            
+            // 投薬期間のビジュアル表示
+            let medicationHtml = '<div class="flex items-center gap-2 mt-2.5">';
+            if (isGonal) {
+                medicationHtml += `<span class="px-2 py-0.5 text-xs font-semibold text-blue-800 bg-blue-100 rounded-full">ゴナールエフ</span>`;
+            }
+            if (isDuphaston) {
+                medicationHtml += `<span class="px-2 py-0.5 text-xs font-semibold text-green-800 bg-green-100 rounded-full">デュファストン</span>`;
+            }
+            medicationHtml += '</div>';
+
+            card.innerHTML = `
+                <div class="flex items-baseline justify-between">
+                    <p class="font-bold text-lg ${textColor}">
+                        ${date.getMonth() + 1}/${date.getDate()}
+                        <span class="text-sm font-medium ml-1">(${dayOfWeek})</span>
+                    </p>
+                </div>
+                ${eventInfo ? `<p class="mt-2 text-sm font-semibold ${eventTextColor}">${eventInfo.label}</p>` : '<p class="mt-2 text-sm text-gray-400">-</p>'}
+                ${isGonal || isDuphaston ? medicationHtml : ''}
+            `;
+            
+            return card;
+        }
+        
+        function formatDate(date) {
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2, '0');
+            const d = String(date.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        }
+        
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.classList.remove('hidden');
+            calendarContainer.innerHTML = '';
+        }
+
+        function hideError() {
+            errorMessage.classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
